@@ -13,6 +13,7 @@ from .gpu_safety import (
     graphics_safety_problem,
     gpu_safety_acknowledgement_status,
 )
+from .hidraw import summary as hidraw_summary
 from .log import BolError, info, ok, warn
 from .ntsync import inproc_sync_problem, inproc_sync_summary
 from .perfcheck import performance_problems, performance_summary
@@ -195,6 +196,9 @@ def doctor(acknowledge_gpu_crash=False):
     # unusable native driver is not a problem for anyone who never asks for
     # it — but it is the first thing to look at for anyone who did (#180).
     print(f"  {'wayland drv':12} : {wayland_driver_summary(engine)}")
+    # A non-controller hidraw device Wine can open can crash its whole HID
+    # stack, and the in-game mouse with it; name the ones PLAY keeps away.
+    print(f"  {'hidraw':12} : {hidraw_summary()}")
     # What the graphics payload granted the game last time it ran: the tier
     # Minecraft's Ray Traced mode is gated on, read back from the launch log
     # rather than measured here, since answering it live would mean opening

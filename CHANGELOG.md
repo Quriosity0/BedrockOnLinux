@@ -4,6 +4,22 @@
 
 ### Fixed
 
+- **The in-game mouse no longer goes dead on machines with an AIO cooler, a
+  fan or RGB controller, or a similar USB gadget.** The cursor moved, but
+  Minecraft saw no hover and no clicks, while the keyboard kept working.
+  Wine's HID bus opens every `/dev/hidraw` node the user can open, and the
+  devices that ship `uaccess` udev rules for their Linux tools can be.
+  Some of them send input reports longer than their own descriptor declares
+  (an NZXT 1e71:1714 declares 21 bytes and sends 64), and Wine copies the
+  whole report into a buffer sized from the descriptor, in winebus's
+  `deliver_next_report` and again in hidclass's `hid_device_queue_input`.
+  The heap corruption crashed `winedevice.exe` at every start, and that
+  process hosts the whole HID stack, Wine's virtual mouse included, so
+  GameInput had no mouse left to read. PLAY now writes winebus's per-device
+  `Hidraw` = 0 option for every hidraw device Wine could open that is not a
+  game controller: Minecraft gets its mouse and keyboard from Wine's virtual
+  devices, and controllers keep hidraw exactly as before. `doctor` lists the
+  devices it covers, and `BOL_HIDRAW=all` gives them back to Wine.
 - **PLAY no longer redoes an Xbox Live sign-in it already just finished.**
   Every launch minted a fresh device, user, XBL, XSTS and SISU token chain —
   eight sequential requests to Microsoft/Xbox — even when the previous launch
