@@ -195,6 +195,10 @@ def main():
         "--mc", metavar="EDITION",
         help="which edition --remove means, when a build is installed for "
              "more than one")
+    lv.add_argument(
+        "--refresh", action="store_true",
+        help="check Microsoft's build index again instead of using the "
+             "cached copy, which can be up to 12 hours old")
     sub.add_parser("login", help="sign in to a Microsoft account")
     sub.add_parser(
         "store-login",
@@ -296,7 +300,8 @@ def main():
             else:
                 for edition in list_editions(a.beta):
                     print(f"{edition['name']}  (--mc {edition['id']})")
-                    for build in list_versions(edition["id"]):
+                    for build in list_versions(edition["id"],
+                                                ignore_cache=a.refresh):
                         print(f"    {build['version']:<14}"
                               f"{'installed' if build['installed'] else ''}")
                 info("Builds are downloaded from Microsoft's own CDN with "

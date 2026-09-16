@@ -20,6 +20,16 @@
   game controller: Minecraft gets its mouse and keyboard from Wine's virtual
   devices, and controllers keep hidraw exactly as before. `doctor` lists the
   devices it covers, and `BOL_HIDRAW=all` gives them back to Wine.
+
+- **The version picker can be told to check for a new build right now.**
+  The list of installable Minecraft builds is fetched once per launch and
+  then cached for up to 12 hours, so a build that Mojang shipped after that
+  fetch stayed invisible until the cache aged out on its own — restarting
+  the launcher changed nothing, because the ordinary path only refetches
+  once per launch too. The version picker now has a ↻ button that bypasses
+  the cache and re-checks the build index on the spot; `bedrock-on-linux
+  versions --refresh` does the same on the command line.
+
 - **PLAY no longer redoes an Xbox Live sign-in it already just finished.**
   Every launch minted a fresh device, user, XBL, XSTS and SISU token chain —
   eight sequential requests to Microsoft/Xbox — even when the previous launch

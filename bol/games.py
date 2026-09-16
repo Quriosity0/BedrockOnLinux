@@ -27,15 +27,16 @@ def version_dir(edition_id, version):
     return GAMES / edition_id / version
 
 
-def list_versions(edition_id):
+def list_versions(edition_id, ignore_cache=False):
     """Installable builds for an edition, newest first.
 
     Each entry gains ``installed``: whether that exact build is already on
     disk, which is what lets switching back to a build you already have cost
-    nothing.
+    nothing. ``ignore_cache`` bypasses the 12-hour cache on the build index,
+    for when a build known to be out is not showing up yet.
     """
     out = []
-    for entry in xodus.version_catalogue(edition_id):
+    for entry in xodus.version_catalogue(edition_id, ignore_cache=ignore_cache):
         entry = dict(entry)
         entry["installed"] = _game_root(
             version_dir(edition_id, entry["version"])) is not None

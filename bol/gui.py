@@ -731,14 +731,28 @@ class Popup(QFrame):
 
 class VersionPicker(Popup):
     picked = Signal(str)
+    refresh_requested = Signal()
 
     def __init__(self, parent):
         super().__init__(parent, width=260, height=320)
         v = QVBoxLayout(self)
         v.setContentsMargins(8, 8, 8, 8)
+        row = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Filter versions…")
-        v.addWidget(self.search)
+        row.addWidget(self.search, 1)
+        self.refresh_btn = btn("↻", lambda: self.refresh_requested.emit(),
+                                kind="ghost", w=28, h=28)
+        # QPushButton's base rule pads 14px each side -- fine for a text
+        # label, but on a fixed 28px box it leaves no room to draw the glyph
+        # at all, so #Ghost's transparent background made this button
+        # invisible rather than merely tight.
+        self.refresh_btn.setStyleSheet("padding: 0px;")
+        self.refresh_btn.setToolTip(
+            "Check Microsoft's build index again — the list is otherwise "
+            "cached for up to 12 hours")
+        row.addWidget(self.refresh_btn)
+        v.addLayout(row)
         self.list = QListWidget()
         v.addWidget(self.list)
         self.search.textChanged.connect(self._filter)
@@ -1507,6 +1521,8 @@ class MainWindow(QMainWindow):
     def _wire_version_picker(self):
         self.version_popup = VersionPicker(self)
         self.version_popup.picked.connect(self.set_version)
+        self.version_popup.refresh_requested.connect(
+            self._refresh_versions_from_picker)
 
     def open_picker(self):
         labels = [l for l, v in zip(self.ui_state.get("labels") or [],
@@ -1583,7 +1599,7 @@ class MainWindow(QMainWindow):
         except ValueError:
             return None
 
-    def refresh_versions(self):
+    def refresh_versions(self, ignore_cache=False):
         def work():
             # Always fetch the full catalogue, stable and preview alike.
             # Which edition is *shown* is a purely client-side filter
@@ -1603,7 +1619,7 @@ class MainWindow(QMainWindow):
                 # edition and not the whole picker. Without this a Preview
                 # outage left the player with no Stable builds either.
                 try:
-                    builds = list_versions(ed["id"])
+                    builds = list_versions(ed["id"], ignore_cache=ignore_cache)
                 except Exception as exc:
                     log._LOG_SINK(f"xx versions for {ed['id']}: {exc}")
                     continue
@@ -1612,10 +1628,39 @@ class MainWindow(QMainWindow):
                                       "edition": ed, "installed": b.get("installed", False)})
             return versions
 
+        if ignore_cache:
+            self.version_popup.refresh_btn.setEnabled(False)
+
+        def done(versions):
+            if ignore_cache and _alive(self.version_popup):
+                self.version_popup.refresh_btn.setEnabled(True)
+            self._on_versions_loaded(versions)
+
+        def failed(exc):
+            if ignore_cache and _alive(self.version_popup):
+                self.version_popup.refresh_btn.setEnabled(True)
+            log._LOG_SINK(f"xx versions: {exc}")
+
         worker = Worker(work)
-        worker.done.connect(self._on_versions_loaded)
-        worker.failed.connect(lambda e: log._LOG_SINK(f"xx versions: {e}"))
-        self._start_worker("versions", worker)
+        worker.done.connect(done)
+        worker.failed.connect(failed)
+        if not self._start_worker("versions", worker) and ignore_cache \
+                and _alive(self.version_popup):
+            # Already fetching (e.g. the once-per-launch load is still in
+            # flight) -- nothing will call done()/failed() to undo the
+            # disable above, so undo it here instead of leaving the button
+            # stuck.
+            self.version_popup.refresh_btn.setEnabled(True)
+
+    def _refresh_versions_from_picker(self):
+        """The picker's ↻: re-check the build index past its 12-hour cache.
+
+        Reached by someone who knows a build is out and does not see it yet
+        -- the ordinary path only fetches once per launch (see
+        refresh_versions), so without this the only way to see a build that
+        appeared since was to restart the app after the cache expired.
+        """
+        self.refresh_versions(ignore_cache=True)
 
     def _on_versions_loaded(self, versions):
         if not _alive(self) or not _alive(self.ver_label):
@@ -1627,6 +1672,12 @@ class MainWindow(QMainWindow):
         labels = [format_display_version(v["tag"], v["beta"]) + ("  ·  BETA" if v["beta"] else "")
                   for v in versions]
         self.ui_state["labels"] = labels
+        if _alive(self.version_popup) and self.version_popup.isVisible():
+            current = self.version_popup.list.currentItem()
+            current_label = current.text() if current else self.ver_label.text()
+            open_labels = [l for l, v in zip(labels, versions)
+                           if self._edition_matches(v)]
+            self.version_popup.set_labels(open_labels, current_label)
         self.ver_label.setText(
             labels[self._saved_version_index(versions)])
         self._update_selected_chip()
