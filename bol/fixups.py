@@ -603,15 +603,33 @@ def hide_signin_button(game_dir):
     sign-in button's visibility binding (#sign_in_visible) to an always-false
     one (#edu_demo_only_ui_visible, false outside Education Edition). Idempotent
     and never fatal — a cosmetic best-effort."""
+    import os
     import re
     try:
         vanilla = Path(game_dir) / "data" / "resource_packs" / "vanilla"
         bra = vanilla / "__brarchive" / "ui.brarchive"
-        if bra.exists():
-            bra.rename(bra.parent / "ui.brarchive.bol-bak")
+        bak = vanilla / "__brarchive" / "ui.brarchive.bol-bak"
+
+        # If a previous run or broken state left ui.brarchive moved aside,
+        # self-heal: restore ui.brarchive if missing, or remove leftover backup.
+        if bak.exists():
+            try:
+                if not os.access(bak.parent, os.W_OK):
+                    bak.parent.chmod(bak.parent.stat().st_mode | 0o700)
+            except Exception:
+                pass
+            if not bra.exists():
+                bak.rename(bra)
+            else:
+                bak.unlink(missing_ok=True)
+
         ss = vanilla / "ui" / "start_screen.json"
         if not ss.exists():
             return
+
+        if bra.exists():
+            bra.rename(bak)
+
         txt = ss.read_text(encoding="utf-8", errors="ignore")
         new, n = re.subn(
             r'("xbl_signin_button@start\.xbl_signin_button"\s*:\s*\{\}\s*\}\s*\]'
