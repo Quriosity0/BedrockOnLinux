@@ -1,6 +1,7 @@
 """Tests for BrArchive reader, writer, and editor."""
 # SPDX-License-Identifier: MIT
 
+import stat
 import struct
 import tempfile
 import unittest
@@ -101,6 +102,31 @@ class BrArchiveTests(unittest.TestCase):
         self.assertTrue(target_file.is_file())
         reloaded = BrArchive.from_file(target_file)
         self.assertEqual(reloaded.read_text("hello.txt"), "world")
+
+    def test_write_keeps_the_permission_bits_of_the_file_it_replaces(self):
+        target_file = self.tmp_path / "ui.brarchive"
+        target_file.write_bytes(BrArchive().to_bytes())
+        target_file.chmod(0o664)
+
+        archive = BrArchive()
+        archive["start_screen.json"] = "{}"
+        archive.write(target_file)
+
+        self.assertEqual(stat.S_IMODE(target_file.stat().st_mode), 0o664)
+        self.assertEqual(BrArchive.from_file(target_file).names(),
+                         ["start_screen.json"])
+
+    def test_write_of_a_new_file_is_not_owner_only(self):
+        target_file = self.tmp_path / "new.brarchive"
+        BrArchive().write(target_file)
+        self.assertEqual(stat.S_IMODE(target_file.stat().st_mode), 0o644)
+
+    def test_write_leaves_no_temporary_file_behind(self):
+        archive = BrArchive()
+        archive["a.json"] = "{}"
+        archive.write(self.tmp_path / "ui.brarchive")
+        self.assertEqual(sorted(p.name for p in self.tmp_path.iterdir()),
+                         ["ui.brarchive"])
 
     def test_extract_files(self):
         archive = BrArchive()

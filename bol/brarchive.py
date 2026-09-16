@@ -3,6 +3,7 @@
 
 import os
 import posixpath
+import stat
 import struct
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -115,16 +116,31 @@ class BrArchive:
         return header + bytes(table) + bytes(data_section)
 
     def write(self, path: Union[str, Path]) -> None:
-        """Atomically write the archive to disk."""
+        """Atomically write the archive to disk.
+
+        The archive rewritten in practice is the game's own user interface,
+        and a game without it dies on its loading screen (#266). So the new
+        bytes reach the disk before the rename puts them in place -- a power
+        cut must leave the old archive or the new one, never a torn file --
+        and the replacement keeps the permission bits of the file it replaces
+        rather than mkstemp's owner-only 0600.
+        """
         target = Path(path).resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
         content = self.to_bytes()
+        try:
+            mode = stat.S_IMODE(target.stat().st_mode)
+        except FileNotFoundError:
+            mode = 0o644
 
         # Write to a sibling temp file in the same directory, then atomic rename
         fd, tmp_path = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp_path, mode)
             os.replace(tmp_path, target)
         except Exception:
             try:

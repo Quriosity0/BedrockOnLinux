@@ -68,6 +68,59 @@ class HideSigninButtonTests(unittest.TestCase):
         self.assertNotIn('"#sign_in_visible"', content)
         self.assertEqual(patched.read_text("other_file.json"), '{"other": 123}')
 
+    def test_brarchive_patching_keeps_bytes_that_are_not_utf8(self):
+        """The start screen is rewritten as bytes: nothing else in it may change."""
+        original = (b'{"note":"\xff\xfe",'
+                    b'"bindings":[{"binding_name":"#sign_in_visible"}]}')
+        archive = BrArchive()
+        archive["start_screen.json"] = original
+        archive.write(self.archive)
+
+        hide_signin_button(self.game_dir)
+
+        patched = BrArchive.from_file(self.archive)["start_screen.json"]
+        self.assertEqual(
+            patched,
+            original.replace(b'"#sign_in_visible"',
+                             b'"#edu_demo_only_ui_visible"'))
+
+    def test_brarchive_patching_keeps_the_archive_permissions(self):
+        archive = BrArchive()
+        archive["start_screen.json"] = '{"binding_name":"#sign_in_visible"}'
+        archive.write(self.archive)
+        self.archive.chmod(0o664)
+
+        hide_signin_button(self.game_dir)
+
+        self.assertEqual(stat.S_IMODE(self.archive.stat().st_mode), 0o664)
+
+    def test_restores_the_pristine_archive_when_ours_no_longer_parses(self):
+        """A torn rewrite must not leave the game without its user interface."""
+        archive = BrArchive()
+        archive["start_screen.json"] = '{"binding_name":"#sign_in_visible"}'
+        archive.write(self.orig_backup)
+        pristine = self.orig_backup.read_bytes()
+        self.archive.write_bytes(pristine[:20])
+
+        hide_signin_button(self.game_dir)
+        self.assertEqual(self.archive.read_bytes(), pristine)
+
+        # The next PLAY hides the button in the restored archive again.
+        hide_signin_button(self.game_dir)
+        self.assertIn(
+            b'"#edu_demo_only_ui_visible"',
+            BrArchive.from_file(self.archive)["start_screen.json"])
+        self.assertEqual(self.orig_backup.read_bytes(), pristine)
+
+    def test_leaves_an_unreadable_archive_it_never_rewrote_alone(self):
+        """No pristine copy means the archive is not ours to replace."""
+        self.archive.write_bytes(b"a-future-archive-format")
+
+        hide_signin_button(self.game_dir)
+
+        self.assertEqual(self.archive.read_bytes(), b"a-future-archive-format")
+        self.assertFalse(self.orig_backup.exists())
+
     def test_brarchive_patching_is_idempotent(self):
         """Running hide_signin_button multiple times does not corrupt or re-backup archive."""
         sample_json = '{"bindings":[{"binding_name":"#sign_in_visible"}]}'

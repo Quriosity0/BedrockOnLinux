@@ -662,13 +662,26 @@ def hide_signin_button(game_dir):
         except Exception:
             pass
 
-        from .brarchive import BrArchive
-        archive = BrArchive.from_file(bra)
+        from .brarchive import BrArchive, BrArchiveError
+        try:
+            archive = BrArchive.from_file(bra)
+        except BrArchiveError:
+            # A pristine copy only exists beside an archive this function
+            # already parsed and rewrote, so an archive that no longer parses
+            # next to one is our own write gone wrong -- and this is the
+            # game's whole user interface. Put the original back; the next
+            # PLAY hides the button again.
+            if not orig_bak.exists():
+                raise
+            shutil.copy2(orig_bak, bra)
+            warn("Restored the game's compiled UI (ui.brarchive) from the "
+                 "copy kept beside it: the archive no longer read back.")
+            return
         if "start_screen.json" not in archive:
             return
 
-        content = archive.read_text("start_screen.json", errors="ignore")
-        if '"#sign_in_visible"' not in content:
+        content = archive.read_bytes("start_screen.json")
+        if b'"#sign_in_visible"' not in content:
             return  # Already patched or not present
 
         if not orig_bak.exists():
@@ -680,7 +693,10 @@ def hide_signin_button(game_dir):
         # property is exposed by the start screen controller and is always false in
         # standard retail builds (true only in Education Edition demo mode), cleanly
         # hiding the button and its padding without breaking UI schema validation.
-        new_content = content.replace('"#sign_in_visible"', '"#edu_demo_only_ui_visible"')
+        # Bytes, not text: a decode that ignored anything it could not read
+        # would silently drop those bytes from the game's own UI definition.
+        new_content = content.replace(b'"#sign_in_visible"',
+                                      b'"#edu_demo_only_ui_visible"')
         archive.set("start_screen.json", new_content)
         archive.write(bra)
         ok("Hid the broken in-game Sign-in button in ui.brarchive.")
