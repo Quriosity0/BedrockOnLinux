@@ -3,10 +3,11 @@
 
 import os
 import stat
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
+from bol.brarchive import BrArchive
 from bol.fixups import hide_signin_button
 
 
@@ -19,6 +20,7 @@ class HideSigninButtonTests(unittest.TestCase):
         self.brarchive_dir.mkdir(parents=True, exist_ok=True)
         self.archive = self.brarchive_dir / "ui.brarchive"
         self.backup = self.brarchive_dir / "ui.brarchive.bol-bak"
+        self.orig_backup = self.brarchive_dir / "ui.brarchive.bol-orig"
         self.ui_dir = self.vanilla / "ui"
 
     def tearDown(self):
@@ -30,7 +32,7 @@ class HideSigninButtonTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_preserves_archive_when_start_screen_missing(self):
-        """When start_screen.json does not exist (1.26.50+), ui.brarchive must be untouched."""
+        """When start_screen.json is not in archive or loose, ui.brarchive must be untouched."""
         self.archive.write_bytes(b"compiled-ui-data")
 
         hide_signin_button(self.game_dir)
@@ -38,6 +40,50 @@ class HideSigninButtonTests(unittest.TestCase):
         self.assertTrue(self.archive.is_file())
         self.assertFalse(self.backup.exists())
         self.assertEqual(self.archive.read_bytes(), b"compiled-ui-data")
+
+    def test_patches_brarchive_when_loose_start_screen_absent(self):
+        """When loose files are absent (1.26.50+), ui.brarchive is patched directly."""
+        sample_json = (
+            '{"controls":[{"xbl_signin_button@start.xbl_signin_button":{}}],'
+            '"bindings":[{"binding_name":"#sign_in_visible"}]}'
+        )
+        archive = BrArchive()
+        archive["start_screen.json"] = sample_json
+        archive["other_file.json"] = '{"other": 123}'
+        archive.write(self.archive)
+
+        hide_signin_button(self.game_dir)
+
+        self.assertTrue(self.archive.is_file())
+        self.assertFalse(self.backup.exists())
+        self.assertTrue(self.orig_backup.is_file())
+
+        # Verify original backup has original content
+        orig_parsed = BrArchive.from_file(self.orig_backup)
+        self.assertIn('"#sign_in_visible"', orig_parsed.read_text("start_screen.json"))
+
+        # Verify target archive has modified content
+        patched = BrArchive.from_file(self.archive)
+        content = patched.read_text("start_screen.json")
+        self.assertIn('"#edu_demo_only_ui_visible"', content)
+        self.assertNotIn('"#sign_in_visible"', content)
+        self.assertEqual(patched.read_text("other_file.json"), '{"other": 123}')
+
+    def test_brarchive_patching_is_idempotent(self):
+        """Running hide_signin_button multiple times does not corrupt or re-backup archive."""
+        sample_json = '{"bindings":[{"binding_name":"#sign_in_visible"}]}'
+        archive = BrArchive()
+        archive["start_screen.json"] = sample_json
+        archive.write(self.archive)
+
+        hide_signin_button(self.game_dir)
+        first_modified_bytes = self.archive.read_bytes()
+        first_orig_bytes = self.orig_backup.read_bytes()
+
+        # Run second time
+        hide_signin_button(self.game_dir)
+        self.assertEqual(self.archive.read_bytes(), first_modified_bytes)
+        self.assertEqual(self.orig_backup.read_bytes(), first_orig_bytes)
 
     def test_self_heals_missing_archive_from_backup(self):
         """If previous runs left ui.brarchive.bol-bak behind, restore it automatically."""
