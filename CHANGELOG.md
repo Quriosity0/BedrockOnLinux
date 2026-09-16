@@ -4,9 +4,31 @@
 
 ### Fixed
 
+- **Minecraft 1.26.50 and newer start again instead of crashing at 78–82 %**
+  ([#266](https://github.com/Wyze3306/BedrockOnLinux/issues/266),
+  [#269](https://github.com/Wyze3306/BedrockOnLinux/pull/269)). Every
+  1.26.50.4 and 1.26.51.1 launch died on the loading screen with an unhandled
+  page fault reading `0x68`, on Intel, AMD and NVIDIA alike, and so did the
+  1.26.50 Minecraft Previews (#154, #270, #271, #272). The launcher
+  caused it, not the game or the engine: to hide the in-game Sign-in button it
+  moved the compiled UI archive, `ui.brarchive`, aside so that the loose
+  JSON-UI files next to it would load instead — and 1.26.50 no longer ships
+  those files. The game was left with no user interface at all and crashed
+  while building its first screen. The archive now stays where the game
+  expects it, and the button is hidden by editing the start screen inside the
+  archive itself; an untouched copy is kept beside it as
+  `ui.brarchive.bol-orig`, and is put back on its own if the edited archive
+  ever fails to read back. PLAY also repairs an install an earlier launcher
+  already broke — including one whose `__brarchive` folder was made read-only
+  to work around the crash — so nothing has to be moved back by hand. Builds
+  up to 1.26.45 keep the old behaviour. Contributed by
+  [@jtdubs](https://github.com/jtdubs).
+
 - **The in-game mouse no longer goes dead on machines with an AIO cooler, a
-  fan or RGB controller, or a similar USB gadget.** The cursor moved, but
-  Minecraft saw no hover and no clicks, while the keyboard kept working.
+  fan or RGB controller, or a similar USB gadget**
+  ([#262](https://github.com/Wyze3306/BedrockOnLinux/pull/262)). The cursor
+  moved, but Minecraft saw no hover and no clicks, while the keyboard kept
+  working.
   Wine's HID bus opens every `/dev/hidraw` node the user can open, and the
   devices that ship `uaccess` udev rules for their Linux tools can be.
   Some of them send input reports longer than their own descriptor declares
@@ -20,15 +42,19 @@
   game controller: Minecraft gets its mouse and keyboard from Wine's virtual
   devices, and controllers keep hidraw exactly as before. `doctor` lists the
   devices it covers, and `BOL_HIDRAW=all` gives them back to Wine.
+  Contributed by [@Leif-Yggdrasil](https://github.com/Leif-Yggdrasil).
 
-- **The version picker can be told to check for a new build right now.**
+- **The version picker can be told to check for a new build right now**
+  ([#268](https://github.com/Wyze3306/BedrockOnLinux/pull/268)).
   The list of installable Minecraft builds is fetched once per launch and
   then cached for up to 12 hours, so a build that Mojang shipped after that
   fetch stayed invisible until the cache aged out on its own — restarting
   the launcher changed nothing, because the ordinary path only refetches
   once per launch too. The version picker now has a ↻ button that bypasses
   the cache and re-checks the build index on the spot; `bedrock-on-linux
-  versions --refresh` does the same on the command line.
+  versions --refresh` does the same on the command line — the wall players
+  looking for 1.26.50.4 on the day it came out ran into (#266).
+  Contributed by [@Queuereel](https://github.com/Queuereel).
 
 - **PLAY no longer redoes an Xbox Live sign-in it already just finished.**
   Every launch minted a fresh device, user, XBL, XSTS and SISU token chain —
