@@ -41,6 +41,7 @@ from .gpu_safety import (
     require_safe_graphics_session,
     retire_idle_current_boot_marker,
 )
+from .hidraw import keep_non_controllers_off_hidraw
 from .inject import start_auto_inject
 from .log import BolError, die, info, ok, warn
 from .ntsync import inproc_sync_problem
@@ -610,6 +611,10 @@ def _launch_once(lock_fds=(), on_started=None):
         install_gameinput(active_prefix(), Path(gd))
     except Exception as e:
         warn(f"GameInput check failed ({e}) — continuing.")
+    try:
+        keep_non_controllers_off_hidraw(active_prefix())
+    except Exception as e:
+        warn(f"HID device check failed ({e}); continuing.")
     # Xbox Live is required for Realms, servers, the Marketplace and Friends —
     # never for the game itself. Neither a missing account nor an unreachable
     # Xbox Live may keep single-player and LAN worlds from starting (#160).
