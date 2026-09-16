@@ -9,7 +9,7 @@
   [#269](https://github.com/Wyze3306/BedrockOnLinux/pull/269)). Every
   1.26.50.4 and 1.26.51.1 launch died on the loading screen with an unhandled
   page fault reading `0x68`, on Intel, AMD and NVIDIA alike, and so did the
-  1.26.50 Minecraft Previews (#154, #270, #271, #272). The launcher
+  1.26.50 Minecraft Previews (#154, #267, #270, #271, #272). The launcher
   caused it, not the game or the engine: to hide the in-game Sign-in button it
   moved the compiled UI archive, `ui.brarchive`, aside so that the loose
   JSON-UI files next to it would load instead — and 1.26.50 no longer ships
