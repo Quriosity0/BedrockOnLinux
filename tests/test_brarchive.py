@@ -12,7 +12,6 @@ from bol.brarchive import (
     ENTRY_SIZE,
     HEADER_SIZE,
     MAGIC,
-    MAX_NAME_LEN,
 )
 
 

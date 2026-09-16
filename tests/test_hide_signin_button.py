@@ -1,7 +1,6 @@
 """Tests for hide_signin_button fixup."""
 # SPDX-License-Identifier: MIT
 
-import os
 import stat
 import tempfile
 import unittest
