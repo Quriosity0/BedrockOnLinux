@@ -66,6 +66,7 @@ class ReadyLaunchHarness:
             mock.patch.object(launch, "ensure_login_deps"),
             mock.patch.object(launch, "xbl_preauth", return_value=preauth),
             mock.patch.object(launch, "bump_stack_reserve"),
+            mock.patch.object(launch, "hide_signin_button"),
             mock.patch.object(launch, "proton_umu_cmd",
                               return_value=(["fake-umu"], dict(umu_env or {}))),
             mock.patch.object(launch, "patch_options"),
@@ -95,7 +96,8 @@ class ReadyLaunchHarness:
             self.launch_mocks = {
                 name: getattr(launch, name)
                 for name in ("warn", "wine_reg_set_refresh_token",
-                             "ensure_login_deps", "xbl_preauth")
+                             "ensure_login_deps", "xbl_preauth",
+                             "hide_signin_button")
             }
             return launch._launch_once(lock_fds=lock_fds,
                                        on_started=on_started)
@@ -1331,4 +1333,9 @@ class DiscordPresenceLaunchTests(ReadyLaunchHarness, unittest.TestCase):
                     Path(td), popen, lambda: "token", lambda _token: True)
         self.assertEqual(self.presence_calls, [])
         self.presence.stop.assert_not_called()
+
+    def test_hide_signin_button_invoked_on_launch(self):
+        self.assertEqual(self._run(), 0)
+        self.launch_mocks["hide_signin_button"].assert_called_once()
+
 

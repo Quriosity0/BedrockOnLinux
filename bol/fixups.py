@@ -594,32 +594,95 @@ def hide_signin_button(game_dir):
     """Hide the broken in-game title-screen 'Sign in' button (cosmetic).
 
     Under Wine there is no real Xbox Live session, so the dock 'Sign in'
-    button on the start screen is dead weight. Hiding it is awkward because
-    Bedrock renders the menu from a *compiled* UI binary
-    (resource_packs/vanilla/__brarchive/ui.brarchive) that shadows the loose
-    ui/*.json — so editing start_screen.json alone has no visible effect
-    (loc strings are read loose, but UI structure comes from the archive).
-    Fix: move the compiled UI aside so the loose JSON-UI loads, then flip the
-    sign-in button's visibility binding (#sign_in_visible) to an always-false
-    one (#edu_demo_only_ui_visible, false outside Education Edition). Idempotent
-    and never fatal — a cosmetic best-effort."""
+    button on the start screen is dead weight. Bedrock renders the menu from
+    compiled UI archives (resource_packs/vanilla/__brarchive/ui.brarchive).
+
+    - In older builds (<1.26.50), vanilla shipped loose ui/*.json files alongside
+      the archive; moving the archive aside forced fallback to loose files,
+      where #sign_in_visible was flipped to #edu_demo_only_ui_visible (false
+      outside Education Edition).
+    - In modern builds (1.26.50+), the loose ui directory was removed entirely.
+      Moving the archive aside leaves the game with zero UI assets and crashes
+      at 78% startup. Instead, we patch start_screen.json directly inside
+      ui.brarchive using :class:`bol.brarchive.BrArchive`.
+
+    Idempotent and never fatal — a cosmetic best-effort."""
+    import os
     import re
+    import shutil
     try:
         vanilla = Path(game_dir) / "data" / "resource_packs" / "vanilla"
         bra = vanilla / "__brarchive" / "ui.brarchive"
-        if bra.exists():
-            bra.rename(bra.parent / "ui.brarchive.bol-bak")
+        bak = vanilla / "__brarchive" / "ui.brarchive.bol-bak"
+        orig_bak = vanilla / "__brarchive" / "ui.brarchive.bol-orig"
+
+        # If a previous run or broken state left ui.brarchive moved aside,
+        # self-heal: restore ui.brarchive if missing, or remove leftover backup.
+        if bak.exists():
+            try:
+                if not os.access(bak.parent, os.W_OK):
+                    bak.parent.chmod(bak.parent.stat().st_mode | 0o700)
+            except Exception:
+                pass
+            if not bra.exists():
+                bak.rename(bra)
+            else:
+                bak.unlink(missing_ok=True)
+
         ss = vanilla / "ui" / "start_screen.json"
-        if not ss.exists():
+        if ss.exists():
+            # Legacy path (<1.26.50): loose UI exists, move archive aside and patch JSON.
+            if bra.exists():
+                bra.rename(bak)
+
+            # In Bedrock's JSON-UI engine, control visibility is driven by property bindings
+            # that override '#visible'. The engine expects a bound symbol name rather than
+            # a static boolean literal, so we bind to '#edu_demo_only_ui_visible'. This
+            # property is exposed by the start screen controller and is always false in
+            # standard retail builds (true only in Education Edition demo mode), cleanly
+            # hiding the button without breaking UI schema validation.
+            txt = ss.read_text(encoding="utf-8", errors="ignore")
+            new, n = re.subn(
+                r'("xbl_signin_button@start\.xbl_signin_button"\s*:\s*\{\}\s*\}\s*\]'
+                r'\s*,\s*"bindings"\s*:\s*\[\s*\{\s*"binding_name"\s*:\s*)'
+                r'"#sign_in_visible"',
+                r'\g<1>"#edu_demo_only_ui_visible"', txt, count=1)
+            if n:
+                ss.write_text(new, encoding="utf-8")
+                ok("Hid the broken in-game Sign-in button.")
             return
-        txt = ss.read_text(encoding="utf-8", errors="ignore")
-        new, n = re.subn(
-            r'("xbl_signin_button@start\.xbl_signin_button"\s*:\s*\{\}\s*\}\s*\]'
-            r'\s*,\s*"bindings"\s*:\s*\[\s*\{\s*"binding_name"\s*:\s*)'
-            r'"#sign_in_visible"',
-            r'\g<1>"#edu_demo_only_ui_visible"', txt, count=1)
-        if n:
-            ss.write_text(new, encoding="utf-8")
-            ok("Hid the broken in-game Sign-in button.")
+
+        # Modern path (1.26.50+): patch start_screen.json directly inside ui.brarchive
+        if not bra.exists():
+            return
+
+        try:
+            if not os.access(bra.parent, os.W_OK):
+                bra.parent.chmod(bra.parent.stat().st_mode | 0o700)
+        except Exception:
+            pass
+
+        from .brarchive import BrArchive
+        archive = BrArchive.from_file(bra)
+        if "start_screen.json" not in archive:
+            return
+
+        content = archive.read_text("start_screen.json", errors="ignore")
+        if '"#sign_in_visible"' not in content:
+            return  # Already patched or not present
+
+        if not orig_bak.exists():
+            shutil.copy2(bra, orig_bak)
+
+        # In Bedrock's JSON-UI engine, control visibility is driven by property bindings
+        # that override '#visible'. The engine expects a bound symbol name rather than
+        # a static boolean literal, so we bind to '#edu_demo_only_ui_visible'. This
+        # property is exposed by the start screen controller and is always false in
+        # standard retail builds (true only in Education Edition demo mode), cleanly
+        # hiding the button and its padding without breaking UI schema validation.
+        new_content = content.replace('"#sign_in_visible"', '"#edu_demo_only_ui_visible"')
+        archive.set("start_screen.json", new_content)
+        archive.write(bra)
+        ok("Hid the broken in-game Sign-in button in ui.brarchive.")
     except Exception as e:
         warn(f"hide_signin_button: {e}")
